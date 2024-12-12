@@ -9,6 +9,12 @@ from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 
 # Enums for Log Configuration
 class LogLevel(Enum):
+    """
+    Enum for log levels.
+
+    Provides predefined levels such as DEBUG, INFO, WARNING, ERROR, and CRITICAL.
+    Includes a utility method for converting strings to LogLevel values.
+    """
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -17,21 +23,48 @@ class LogLevel(Enum):
 
     @staticmethod
     def from_str(level_str: str) -> 'LogLevel':
+        """
+        Convert a string to a corresponding LogLevel enum value.
+
+        Args:
+            level_str (str): String representation of the log level.
+
+        Returns:
+            LogLevel: Corresponding enum value.
+
+        Raises:
+            ValueError: If the provided string does not match any LogLevel.
+        """
         level_str = level_str.upper()
         if level_str in LogLevel.__members__:
             return LogLevel[level_str]
         raise ValueError(f"Unknown log level: {level_str}")
 
 class LogFormat(Enum):
+    """
+    Enum for log formats.
+
+    Provides predefined formats such as PLAIN and JSON for log messages.
+    """
     PLAIN = "PLAIN"
     JSON = "JSON"
 
 class HandlerType(Enum):
+    """
+    Enum for handler types.
+
+    Specifies different handler types such as CONSOLE and FILE.
+    """
     CONSOLE = "CONSOLE"
     FILE = "FILE"
 
 # Configuration Classes
 class HandlerConfig:
+    """
+    Configuration for individual log handlers.
+
+    Defines settings such as handler type, log level, format, and file rotation options.
+    """
     def __init__(
         self,
         handler_type: HandlerType = HandlerType.CONSOLE,
@@ -43,6 +76,19 @@ class HandlerConfig:
         rotate_when: Optional[str] = None,
         timestamp_format: str = "%Y-%m-%d %H:%M:%S",
     ):
+        """
+        Initialize a handler configuration.
+
+        Args:
+            handler_type (HandlerType): Type of the handler (CONSOLE or FILE).
+            level (LogLevel): Logging level for the handler.
+            format (LogFormat): Format of the log messages.
+            filename (Optional[Path]): Path for file logging.
+            rotate_size (Optional[int]): File size limit for rotation in bytes.
+            rotate_count (int): Number of backup files to keep.
+            rotate_when (Optional[str]): Time-based rotation interval (e.g., 'midnight').
+            timestamp_format (str): Format for timestamps in logs.
+        """
         self.handler_type = handler_type
         self.level = level
         self.format = format
@@ -53,18 +99,36 @@ class HandlerConfig:
         self.timestamp_format = timestamp_format
 
 class LoggerConfig:
+    """
+    Configuration for the logger.
+
+    Includes settings for handlers, callbacks, and asynchronous mode.
+    """
     def __init__(
         self,
         handlers: Optional[List[HandlerConfig]] = None,
         callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         async_mode: bool = False,
     ):
+        """
+        Initialize the logger configuration.
+
+        Args:
+            handlers (Optional[List[HandlerConfig]]): List of handler configurations.
+            callback (Optional[Callable[[Dict[str, Any]], None]]): Function to process each log entry.
+            async_mode (bool): Enables asynchronous logging if True.
+        """
         self.handlers = handlers or [HandlerConfig()]
         self.callback = callback
         self.async_mode = async_mode
 
 # Logger Implementation
 class Logger:
+    """
+    Advanced logging system supporting multiple handlers and asynchronous processing.
+
+    Provides methods for logging messages at different levels and managing handlers.
+    """
     LEVEL_MAP = {
         LogLevel.DEBUG: logging.DEBUG,
         LogLevel.INFO: logging.INFO,
@@ -74,6 +138,12 @@ class Logger:
     }
 
     def __init__(self, config: LoggerConfig):
+        """
+        Initialize the logger with the given configuration.
+
+        Args:
+            config (LoggerConfig): Configuration for the logger.
+        """
         self.config = config
         self.logger = logging.getLogger("AdvancedLogger")
         self.logger.setLevel(logging.DEBUG)
@@ -88,6 +158,15 @@ class Logger:
         self._queue_task = None
 
     def _create_handler(self, cfg: HandlerConfig) -> logging.Handler:
+        """
+        Create a logging handler based on the configuration.
+
+        Args:
+            cfg (HandlerConfig): Handler configuration.
+
+        Returns:
+            logging.Handler: Configured handler instance.
+        """
         if cfg.handler_type == HandlerType.CONSOLE:
             handler = logging.StreamHandler()
         elif cfg.handler_type == HandlerType.FILE:
@@ -126,17 +205,35 @@ class Logger:
         return handler
 
     async def start(self):
+        """
+        Start asynchronous logging.
+
+        Initializes necessary tasks for asynchronous processing.
+        """
         if self.config.async_mode:
             self._stop_event = asyncio.Event()
             self._queue_task = asyncio.create_task(self._process_log_queue())
 
     async def shutdown(self):
+        """
+        Shutdown the logger gracefully.
+
+        Ensures all logs in the queue are processed before exiting.
+        """
         if self.config.async_mode and self._stop_event:
             self._stop_event.set()
             if self._queue_task:
                 await self._queue_task
 
     def log(self, level: LogLevel, message: str, **context: Any):
+        """
+        Log a message with the specified level and context.
+
+        Args:
+            level (LogLevel): Severity level of the log.
+            message (str): Log message.
+            **context (Any): Additional context for the log entry.
+        """
         if self.LEVEL_MAP[level] < self.logger.level:
             return
 
@@ -153,6 +250,14 @@ class Logger:
             self._process_log_entry(log_entry)
 
     def _process_log_entry(self, log_entry: Dict[str, Any]):
+        """
+        Process a single log entry.
+
+        Emits the log and invokes the callback if configured.
+
+        Args:
+            log_entry (Dict[str, Any]): Log entry data.
+        """
         self._emit_log(log_entry)
         if self.config.callback:
             try:
@@ -161,12 +266,23 @@ class Logger:
                 self.logger.error(f"Callback error: {e}")
 
     async def _process_log_queue(self):
+        """
+        Process the log queue asynchronously.
+
+        Continuously fetches log entries from the queue and handles them.
+        """
         while not self._stop_event.is_set() or not self.log_queue.empty():
             log_entry = await self.log_queue.get()
             self._process_log_entry(log_entry)
             self.log_queue.task_done()
 
     def _emit_log(self, log_entry: Dict[str, Any]):
+        """
+        Emit a log entry to the configured handlers.
+
+        Args:
+            log_entry (Dict[str, Any]): Log entry data.
+        """
         self.logger.log(
             self.LEVEL_MAP[LogLevel[log_entry["level"]]],
             log_entry["message"],
@@ -174,27 +290,82 @@ class Logger:
         )
 
     def debug(self, message: str, **context: Any):
+        """
+        Log a debug message.
+
+        Args:
+            message (str): Debug message.
+            **context (Any): Additional context.
+        """
         self.log(LogLevel.DEBUG, message, **context)
 
     def info(self, message: str, **context: Any):
+        """
+        Log an info message.
+
+        Args:
+            message (str): Info message.
+            **context (Any): Additional context.
+        """
         self.log(LogLevel.INFO, message, **context)
 
     def warning(self, message: str, **context: Any):
+        """
+        Log a warning message.
+
+        Args:
+            message (str): Warning message.
+            **context (Any): Additional context.
+        """
         self.log(LogLevel.WARNING, message, **context)
 
     def error(self, message: str, **context: Any):
+        """
+        Log an error message.
+
+        Args:
+            message (str): Error message.
+            **context (Any): Additional context.
+        """
         self.log(LogLevel.ERROR, message, **context)
 
     def critical(self, message: str, **context: Any):
+        """
+        Log a critical message.
+
+        Args:
+            message (str): Critical message.
+            **context (Any): Additional context.
+        """
         self.log(LogLevel.CRITICAL, message, **context)
 
 # Formatters
 class PlainFormatter(logging.Formatter):
+    """
+    Formatter for plain text logs.
+
+    Formats log entries as plain text with customizable timestamps.
+    """
     def __init__(self, timestamp_format: str):
+        """
+        Initialize the formatter.
+
+        Args:
+            timestamp_format (str): Format for timestamps.
+        """
         super().__init__(fmt="[{asctime}] [{levelname}] {message} {context}", style="{")
         self.timestamp_format = timestamp_format
 
     def format(self, record: logging.LogRecord) -> str:
+        """
+        Format a log record as plain text.
+
+        Args:
+            record (logging.LogRecord): Log record to format.
+
+        Returns:
+            str: Formatted log message.
+        """
         record.asctime = datetime.fromtimestamp(record.created).strftime(
             self.timestamp_format
         )
@@ -204,11 +375,31 @@ class PlainFormatter(logging.Formatter):
         return super().format(record)
 
 class JSONFormatter(logging.Formatter):
+    """
+    Formatter for JSON logs.
+
+    Formats log entries as JSON with customizable timestamps.
+    """
     def __init__(self, timestamp_format: str):
+        """
+        Initialize the formatter.
+
+        Args:
+            timestamp_format (str): Format for timestamps.
+        """
         self.timestamp_format = timestamp_format
         super().__init__()
 
     def format(self, record: logging.LogRecord) -> str:
+        """
+        Format a log record as JSON.
+
+        Args:
+            record (logging.LogRecord): Log record to format.
+
+        Returns:
+            str: JSON formatted log message.
+        """
         log_entry = {
             "level": record.levelname,
             "timestamp": datetime.fromtimestamp(record.created).strftime(
